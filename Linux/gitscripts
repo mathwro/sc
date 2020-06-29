@@ -1,0 +1,171 @@
+#Branch reset
+#Checkout master, deletes the branch and pulls the new version
+gbreset() {
+	GBRANCH=$(git branch | sed -n 's/\* //p')
+	if [[ "$GBRANCH" == "master" ]]
+		then
+		echo "Master is checked out"
+		return
+	fi
+
+	if [[ "$GBRANCH" == "" ]]
+		then
+		echo "Master is checked out"
+		return
+	fi
+
+	git checkout master >/dev/null 2>&1
+	git branch -D $GBRANCH >/dev/null 2>&1
+	git pull >/dev/null 2>&1
+	git checkout $GBRANCH >/dev/null 2>&1
+
+	GBRANCH2=$(git branch | sed -n 's/\* //p')
+	if [[ "$GBRANCH2" == "master" ]]
+		then
+		git checkout -b $GBRANCH >/dev/null 2>&1
+	fi 
+	echo "$GBRANCH have been reset"
+}
+
+
+#standup
+standup() {
+
+	#Setup
+	current=$(pwd)
+	touch ${HOME}/standup
+	touch ${HOME}/tempStandup
+	repos=${HOME}/repo
+	list=${HOME}/standup
+	tempList=${HOME}/tempStandup
+	param=$1
+	
+	updates() {
+		GBRANCH=$(git branch | sed -n 's/\* //p')
+		git checkout master
+		git pull
+		if [[ "$param" == "weekend" ]]
+			then
+			echo -e "\n$(git log --merges --oneline --since='3 day ago')" >> ${list}
+		elif [[ -z "$param" ]]
+			then
+			echo -e "\n$(git log --merges --oneline --since='1 day ago')" >> ${list}
+		else
+			echo -e "\n$(git log --merges --oneline --since=''$param' day ago')" >>${list}
+		fi
+
+		#echo $(cat $tempList | grep -oP '\S*maw\S*') >> $list
+		#echo $(cat $tempList | grep -oP '\S*cicd\S*') >> $list
+		#echo $(cat $tempList | grep -oP '\S*wsf\S*') >> $list
+
+		git checkout ${GBRANCH}
+		cd ${repos}
+	} > /dev/null 2>&1
+
+	#Client
+	echo "Generating list from 'clients'"
+	echo -e "\n - Client:" >> ${list}
+	cd ${repos}/clients
+	updates
+
+	#Obfuscator
+	echo "Generating list from 'Obfuscator'"
+	echo "	" >> ${list}
+	echo -e "\n - Obfuscator: " >> ${list}	
+	cd ${repos}/obfuscator
+	updates
+
+	#CICD
+	echo "Generating list from 'CICD'"
+	echo "	" >> ${list}
+	echo -e "\n - CICD: " >> ${list}
+	cd ${repos}/cicd/codesealer_build_tools
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - BT: " >> ${list}
+	cd ${repos}/cicd/browsertest
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - WSF-BT: " >> ${list}
+	cd ${repos}/cicd/wsf-browser-tests
+	updates
+
+	#WSF
+	echo "Generating list from 'WSF'"
+	echo "	" >> ${list}
+	echo -e "\n - WSF-Server: " >> ${list}
+	cd ${repos}/wsf/wsf-server
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - ConfigUI: " >> ${list}
+	cd ${repos}/wsf/configui
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - Dashboard: " >> ${list}
+	cd ${repos}/wsf/dashboard
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - Services: " >> ${list}
+	cd ${repos}/wsf/services
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - Storage: " >> ${list}
+	cd ${repos}/wsf/storage
+	updates
+
+	echo "	" >> ${list}
+	echo -e "\n - Common: " >> ${list}
+	cd ${repos}/wsf/common
+	updates
+
+	#Report classifier
+	echo "	" >> ${list}
+	echo -e "\n - Report-Classifier: " >> ${list}
+	cd ${repos}/wsf/report-classifier
+	updates
+
+	clear
+
+	echo ""
+	cat ${list}
+
+	#Cleanup
+	cd ${current}
+	rm ${list}
+}
+
+#MAW Branching
+mawbranch() {
+	mawing () {
+		GBRANCH=$(git branch | sed -n 's/\* //p')
+		git checkout master
+		git pull
+		git checkout $GBRANCH
+		mawa='maw'
+			if [[ $GBRANCH == "wsf"* ]]; then
+				mawb=${GBRANCH/wsf/$mawa}
+			fi
+
+			if [[ $GBRANCH == "cicd"* ]]; then
+				mawb=${GBRANCH/cicd/$mawa}
+			fi
+
+		git checkout -b $mawb
+		git rebase master
+	} > /dev/null 2>&1
+
+	mawing
+
+	if [[ "$1" == "push" ]]
+		then
+		echo "Pushing $mawb"
+		git push origin $mawb > /dev/null 2>&1
+		return
+	fi
+}
