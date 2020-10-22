@@ -2,6 +2,13 @@
 
 #Other sites to provide IPv4 public address with this type of request
 
+<# Required modules:
+Az.Accounts
+Az.AnalysisServices
+AzureRM.Profiles 5.6.3+
+Azure.AnalysisServices
+#>
+
 <#
 http://ipinfo.io/ip
 http://ifconfig.me/ip
@@ -14,10 +21,9 @@ http://smart-ip.net/myip
 param(
     [Parameter(ValueFromPipeline = $true)][String] $EnvironmentName = "",
     [Parameter(ValueFromPipeline = $true)][String] $databaseName = "",
-    [Parameter(ValueFromPipeline = $true)][String] $RefreshType = "Full",
-    [Parameter(ValueFromPipeline = $true)][String] $ResourceGroup = "Test",
-    [Parameter(ValueFromPipeline = $true)][String] $Region = "northeurope",
-
+    [Parameter(ValueFromPipeline = $true)][String] $RefreshType = "",
+    [Parameter(ValueFromPipeline = $true)][String] $ResourceGroup = "",
+    [Parameter(ValueFromPipeline = $true)][String] $Region = ""
 )
 
 #Setting additional parameters
@@ -36,10 +42,8 @@ Connect-AzAccount `
     -CertificateThumbprint $servicePrincipalConnection.CertificateThumbprint `
     -ServicePrincipal
 
-
 $AzureCred = Get-AutomationPSCredential `
     -Name "ASRefreshCred"
-
 
 $AServiceServer = Get-AzAnalysisServicesServer -Name $EnvironmentName -ResourceGroupName $ResourceGroup
 $FirewallRules = ($AServiceServer).FirewallConfig.FirewallRules
@@ -62,7 +66,6 @@ if (!($currentIP -eq $previousIP)) {
         $ruleNumberVar = "rule" + "$ruleNumberIndex"
         #Exception of storage of firewall rule is made for the rule to be updated
         if (!($_.FirewallRuleName -match "$ExistingFirewallRuleName")) {
-
             $start = $_.RangeStart
             $end = $_.RangeEnd
             $tempRule = New-AzAnalysisServicesFirewallRule `
@@ -85,14 +88,13 @@ if (!($currentIP -eq $previousIP)) {
     Set-Variable -Name "$ruleNumberVar" -Value $updatedRule
     $Rules.Add((Get-Variable $ruleNumberVar -ValueOnly))
 
-    if ($powerBi) {
-        $Rules.Add((New-AzAnalysisServicesFirewallRule `
-                    -EnablePowerBiService $true))
-    }
-
-
     #Creating Firewall config object
-    $conf = New-AzAnalysisServicesFirewallConfig -FirewallRule $Rules
+    if ($powerBi) {
+        $conf = New-AzAnalysisServicesFirewallConfig -EnablePowerBIService -FirewallRule $Rules
+    }
+    else {
+        $conf = New-AzAnalysisServicesFirewallConfig -FirewallRule $Rules
+    }    
     
     #Setting firewall config
     if ([String]::IsNullOrEmpty($AServiceServer.BackupBlobContainerUri)) {
@@ -105,14 +107,13 @@ if (!($currentIP -eq $previousIP)) {
         $AServiceServer | Set-AzAnalysisServicesServer `
             -FirewallConfig $conf `
             -BackupBlobContainerUri $AServiceServer.BackupBlobContainerUri `
-            -Sku $AServiceServer.Sku.Name.TrimEnd()
-    
+            -Sku $AServiceServer.Sku.Name.TrimEnd()    
     }
     Write-Output "Updated firewall rule to include current IP: $currentIP"
 }
 
 
 #Invoking the cube processing
-Write-Output "Processing database"
 Add-AzureAnalysisServicesAccount -RolloutEnvironment "$Region.asazure.windows.net" -ServicePrincipal -Credential $AzureCred -TenantId $servicePrincipalConnection.TenantID
+Write-Output "Processing database"
 Invoke-ProcessASDatabase -server $Environmenturl -DatabaseName $databaseName -RefreshType $RefreshType
